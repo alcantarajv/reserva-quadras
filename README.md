@@ -341,4 +341,7 @@ Java 21 · Spring Boot 4.1 · Spring Security · PostgreSQL 17 · Flyway · JPA/
 
 ---
 
-Feito por [João Vitor Alcântara Corrêa](https://github.com/alcantarajv).
+## Autor
+
+**João Vitor Alcântara Corrêa**
+[GitHub](https://github.com/alcantarajv) · [LinkedIn](https://linkedin.com/in/joaovalcantara)
