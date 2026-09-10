@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API de Reserva de Quadras</title>
+    <!--
+      Pagina estatica, sem framework e sem build. A raiz de uma API devolve 401
+      ou 404 -- correto tecnicamente, ruim para quem abre o link sem ler o README.
+      O que interessa neste projeto e o backend; esta pagina so precisa deixa-lo
+      demonstravel sem abrir um terminal.
+
+      O demo abaixo usa a propria API: registra um usuario, reserva um horario e
+      tenta reservar de novo, mostrando o 409 vindo da constraint de exclusao.
+      E o argumento central do projeto, executando ao vivo.
+    -->
+    <style>
+        :root {
+            --fundo: #0f1117;
+            --superficie: #171a23;
+            --borda: #262b38;
+            --texto: #e4e7ee;
+            --suave: #9aa3b5;
+            --destaque: #5b9cf8;
+            --ok: #3fb37f;
+            --erro: #e5735f;
+            --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 2rem 1.25rem 4rem;
+            background: var(--fundo);
+            color: var(--texto);
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            line-height: 1.6;
+        }
+
+        main { max-width: 820px; margin: 0 auto; }
+
+        h1 { font-size: 1.9rem; margin: 0 0 .4rem; letter-spacing: -.02em; }
+        h2 { font-size: 1.15rem; margin: 2.5rem 0 .75rem; letter-spacing: -.01em; }
+
+        .sub { color: var(--suave); margin: 0 0 2rem; font-size: 1.05rem; }
+
+        .cartao {
+            background: var(--superficie);
+            border: 1px solid var(--borda);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+
+        p { margin: 0 0 1rem; }
+        .suave { color: var(--suave); font-size: .92rem; }
+
+        code {
+            font-family: var(--mono);
+            background: #0b0d13;
+            border: 1px solid var(--borda);
+            border-radius: 4px;
+            padding: .12em .4em;
+            font-size: .88em;
+        }
+
+        a { color: var(--destaque); }
+
+        button {
+            font: inherit;
+            font-weight: 600;
+            color: #0b0d13;
+            background: var(--destaque);
+            border: 0;
+            border-radius: 7px;
+            padding: .65rem 1.15rem;
+            cursor: pointer;
+        }
+        button:hover:not(:disabled) { background: #7db0fa; }
+        button:disabled { opacity: .55; cursor: progress; }
+
+        #saida {
+            font-family: var(--mono);
+            font-size: .84rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin-top: 1.25rem;
+            padding: 1rem;
+            background: #0b0d13;
+            border: 1px solid var(--borda);
+            border-radius: 7px;
+            min-height: 2.5rem;
+        }
+        #saida:empty { display: none; }
+
+        .passo { display: block; }
+        .ok { color: var(--ok); }
+        .erro { color: var(--erro); }
+
+        ul { padding-left: 1.15rem; margin: 0 0 1rem; }
+        li { margin-bottom: .35rem; }
+
+        footer {
+            margin-top: 3rem;
+            padding-top: 1.25rem;
+            border-top: 1px solid var(--borda);
+            color: var(--suave);
+            font-size: .9rem;
+        }
+    </style>
+</head>
+<body>
+<main>
+    <h1>API de Reserva de Quadras</h1>
+    <p class="sub">
+        Java 21 · Spring Boot 4 · PostgreSQL. O ponto técnico do projeto é o
+        controle de concorrência — e dá para vê-lo funcionando aqui embaixo.
+    </p>
+
+    <h2>O problema</h2>
+    <p>
+        Duas pessoas clicam em "reservar" na mesma quadra, no mesmo horário, no mesmo
+        instante. Validar com um <code>SELECT</code> antes do <code>INSERT</code> não
+        resolve: entre a consulta e a gravação existe uma janela em que a outra
+        transação passa, e as duas veem o horário livre.
+    </p>
+    <p>
+        A garantia está no único lugar sem janela de corrida — uma constraint de
+        exclusão do PostgreSQL (<code>EXCLUDE USING gist</code>). A requisição
+        perdedora recebe <strong>409 Conflict</strong>.
+    </p>
+
+    <h2>Veja acontecendo</h2>
+    <div class="cartao">
+        <p class="suave">
+            O botão cria uma conta, reserva um horário e tenta reservar
+            <strong>o mesmo horário</strong> outra vez. A segunda tentativa é
+            barrada pelo banco.
+        </p>
+        <button id="rodar" type="button">Rodar demonstração</button>
+        <div id="saida" aria-live="polite"></div>
+    </div>
+
+    <h2>Explorar a API</h2>
+    <ul>
+        <li><a href="/swagger-ui.html">Swagger UI</a> — todos os endpoints, com o botão Authorize</li>
+        <li><a href="/v3/api-docs">/v3/api-docs</a> — o spec OpenAPI cru</li>
+        <li><a href="/api/quadras">/api/quadras</a> — listagem pública, sem token</li>
+    </ul>
+
+    <footer>
+        <strong>João Vitor Alcântara Corrêa</strong><br>
+        <a href="https://github.com/alcantarajv/reserva-quadras">Código no GitHub</a> ·
+        <a href="https://linkedin.com/in/joaovalcantara">LinkedIn</a>
+    </footer>
+</main>
+
+<script>
+    const botao = document.getElementById('rodar');
+    const saida = document.getElementById('saida');
+
+    function escrever(texto, classe) {
+        const linha = document.createElement('span');
+        linha.className = 'passo ' + (classe || '');
+        linha.textContent = texto;
+        saida.appendChild(linha);
+    }
+
+    async function json(resposta) {
+        try { return await resposta.json(); } catch { return null; }
+    }
+
+    // Próximo dia às 10:00 no fuso do negócio (America/Sao_Paulo, UTC-3).
+    // Enviar o offset explícito é exigência da API: sem fuso, "10h" é ambíguo.
+    function amanhaAsDez() {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        const iso = d.toISOString().slice(0, 10);
+        return {
+            inicio: iso + 'T10:00:00-03:00',
+            fim: iso + 'T11:00:00-03:00'
+        };
+    }
+
+    botao.addEventListener('click', async () => {
+        botao.disabled = true;
+        saida.textContent = '';
+
+        try {
+            // 1. Conta nova a cada execução, para a demo não colidir com ela mesma.
+            const sufixo = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+            const email = `demo-${sufixo}@exemplo.dev`;
+            const senha = 'demo12345678';
+
+            escrever('1. Criando uma conta de demonstração...');
+            const registro = await fetch('/api/auth/registrar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nome: 'Visitante', email, senha })
+            });
+            if (!registro.ok) throw new Error('registro falhou (HTTP ' + registro.status + ')');
+            escrever('   conta criada: ' + email, 'ok');
+
+            escrever('2. Autenticando...');
+            const login = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, senha })
+            });
+            if (!login.ok) throw new Error('login falhou (HTTP ' + login.status + ')');
+            const { token } = await login.json();
+            escrever('   token JWT recebido', 'ok');
+
+            // Precisa de uma quadra para reservar. A listagem é pública.
+            escrever('3. Procurando uma quadra disponível...');
+            const quadras = await (await fetch('/api/quadras')).json();
+            if (!Array.isArray(quadras) || quadras.length === 0) {
+                escrever('   nenhuma quadra cadastrada — peça ao admin para criar uma.', 'erro');
+                return;
+            }
+            const quadra = quadras[0];
+            escrever('   usando "' + quadra.nome + '"', 'ok');
+
+            const { inicio, fim } = amanhaAsDez();
+            const autorizado = {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            };
+            const corpo = JSON.stringify({ quadraId: quadra.id, inicio, fim });
+
+            escrever('4. Reservando amanhã, das 10h às 11h...');
+            const primeira = await fetch('/api/reservas', { method: 'POST', headers: autorizado, body: corpo });
+            const dadosPrimeira = await json(primeira);
+
+            if (primeira.status === 201) {
+                escrever('   HTTP 201 — reserva confirmada, R$ ' + dadosPrimeira.valor, 'ok');
+            } else if (primeira.status === 409) {
+                // Alguém já rodou a demo hoje: o horário está tomado. O resultado
+                // continua sendo o que interessa mostrar.
+                escrever('   HTTP 409 — esse horário já estava reservado', 'ok');
+                escrever('   (outra pessoa rodou a demo antes; a constraint segurou)', 'ok');
+                return;
+            } else {
+                escrever('   HTTP ' + primeira.status + ' — ' + (dadosPrimeira?.detail || 'erro'), 'erro');
+                return;
+            }
+
+            escrever('5. Tentando reservar EXATAMENTE o mesmo horário...');
+            const segunda = await fetch('/api/reservas', { method: 'POST', headers: autorizado, body: corpo });
+            const dadosSegunda = await json(segunda);
+
+            if (segunda.status === 409) {
+                escrever('   HTTP 409 Conflict', 'ok');
+                escrever('   "' + dadosSegunda.detail + '"', 'ok');
+                escrever('');
+                escrever('A segunda reserva foi barrada pela constraint de exclusão do', 'ok');
+                escrever('PostgreSQL — não por uma checagem em Java, que teria uma', 'ok');
+                escrever('janela de corrida entre a consulta e a gravação.', 'ok');
+            } else {
+                escrever('   HTTP ' + segunda.status + ' — esperava 409!', 'erro');
+            }
+        } catch (e) {
+            escrever('Falhou: ' + e.message, 'erro');
+        } finally {
+            botao.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>
