@@ -254,7 +254,9 @@ Content-Type: application/problem+json
 
 ## No ar
 
-> **Link:** _preencher com a URL do Render depois do deploy_
+**<https://reserva-quadras.onrender.com>**
+
+[Swagger UI](https://reserva-quadras.onrender.com/swagger-ui.html) · [Health](https://reserva-quadras.onrender.com/actuator/health) · [Quadras](https://reserva-quadras.onrender.com/api/quadras)
 
 A raiz traz uma página que executa a demonstração do conflito ao vivo: ela cria uma conta, reserva um horário e tenta reservar **o mesmo horário** de novo, mostrando o 409 vindo da constraint. É o argumento central do projeto rodando no navegador, sem precisar de terminal.
 
