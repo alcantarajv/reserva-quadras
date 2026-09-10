@@ -1,0 +1,98 @@
+# Blueprint do Render: a infraestrutura do deploy descrita em arquivo, junto do
+# codigo, em vez de configurada a mao no painel.
+#
+# Vale pelo mesmo motivo do compose.yaml: quem le o repositorio ve o que esta no
+# ar, e uma mudanca de configuracao passa por commit e revisao em vez de
+# acontecer num formulario que ninguem mais viu.
+#
+# Como usar: no painel do Render, New > Blueprint, apontando para este
+# repositorio. Ele le este arquivo, cria o servico e pergunta os valores
+# marcados com "sync: false".
+#
+# O PostgreSQL NAO esta aqui de proposito -- veja a nota no fim do arquivo.
+
+services:
+  - type: web
+    name: reserva-quadras
+    runtime: docker
+    plan: free
+    # Virginia e a regiao mais proxima do Brasil entre as oferecidas no plano
+    # gratuito.
+    region: virginia
+    dockerfilePath: ./Dockerfile
+
+    # O Render constroi o Dockerfile do repositorio -- o mesmo que roda na sua
+    # maquina e na integracao continua. Sem buildpack, sem comando de build aqui.
+
+    # O Render chama este caminho para decidir se a instancia esta viva. Sem
+    # isso ele so olha se a porta abriu, e a porta abre antes de o Flyway
+    # terminar de migrar.
+    healthCheckPath: /actuator/health
+
+    # "checksPass" e nao "commit": o deploy so acontece se o workflow de CI
+    # passar. Um push que quebra os testes nao chega em producao.
+    autoDeployTrigger: checksPass
+
+    envVars:
+      # Ativa o perfil "prod" que, pelo grupo declarado no application.properties,
+      # tambem ativa o "docker" (log em INFO, /actuator/health sem detalhes).
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+
+      # O Render gera um valor aleatorio de 256 bits na criacao e nunca o mostra
+      # em lugar nenhum -- exatamente o que se quer de uma chave de assinatura.
+      # Ele fica estavel entre deploys; se fosse regenerado, todos os tokens
+      # emitidos seriam invalidados a cada subida.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Credenciais do PostgreSQL no Neon (veja a nota no fim). "sync: false" faz
+      # o Render perguntar o valor na criacao, em vez de deixa-lo escrito neste
+      # arquivo. Ficam guardadas cifradas pelo Render.
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+
+      # O primeiro ADMIN. O registro publico so cria CLIENTE -- se o papel viesse
+      # no corpo da requisicao, qualquer um se autopromoveria --, entao sem estas
+      # duas variaveis o servico sobe sem nenhum administrador e as rotas de
+      # gestao de quadras ficam inalcancaveis.
+      #
+      # A criacao e idempotente: se a conta ja existe, nada acontece. Trocar a
+      # senha depois exige troca-la pela aplicacao, nao aqui.
+      - key: ADMIN_INICIAL_EMAIL
+        sync: false
+      - key: ADMIN_INICIAL_SENHA
+        sync: false
+
+      # A instancia gratuita tem 512 MB e o plano gratuito do Neon limita as
+      # conexoes simultaneas. Cinco sobram para o volume de um portfolio, e o
+      # pool cheio nunca fica sendo o gargalo antes da memoria.
+      - key: DB_POOL_SIZE
+        value: "5"
+
+      # O Neon suspende o banco depois de alguns minutos ocioso. A primeira
+      # conexao seguinte espera ele acordar, o que passa dos 3 segundos que
+      # valem localmente.
+      - key: DB_CONNECTION_TIMEOUT
+        value: "10000"
+
+# -----------------------------------------------------------------------------
+# Por que o PostgreSQL nao esta neste arquivo
+#
+# O plano gratuito de PostgreSQL do Render e apagado 30 dias depois de criado.
+# Num projeto de portfolio isso significa o link ao vivo morrendo todo mes,
+# provavelmente sem aviso, provavelmente na semana em que alguem for olhar.
+#
+# O banco fica entao no Neon, cujo plano gratuito e permanente. As credenciais
+# entram como DB_URL, DB_USERNAME e DB_PASSWORD.
+#
+# O Neon exige TLS: a DB_URL precisa terminar em ?sslmode=require.
+#
+# Atencao a extensao: este projeto depende de btree_gist para a constraint de
+# exclusao que impede reservas sobrepostas. O Neon a oferece, e a migration V4
+# roda "CREATE EXTENSION IF NOT EXISTS btree_gist" sozinha na primeira subida.
+# -----------------------------------------------------------------------------
