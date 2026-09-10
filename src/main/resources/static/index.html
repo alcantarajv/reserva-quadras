@@ -170,15 +170,28 @@
         try { return await resposta.json(); } catch { return null; }
     }
 
-    // Próximo dia às 10:00 no fuso do negócio (America/Sao_Paulo, UTC-3).
+    // Sorteia um horário livre no fuso do negócio (America/Sao_Paulo, UTC-3).
     // Enviar o offset explícito é exigência da API: sem fuso, "10h" é ambíguo.
-    function amanhaAsDez() {
+    //
+    // Por que sortear em vez de usar sempre "amanhã às 10h": o primeiro visitante
+    // ocuparia esse horário e todos os seguintes veriam a demonstração parar no
+    // passo 4, sem nunca chegar ao 409 da segunda tentativa -- que é o ponto.
+    // Entre 1 e 14 dias à frente, das 10h às 19h, dá 140 combinações; com o retry
+    // abaixo, a chance de não achar slot livre é desprezível.
+    function slotAleatorio() {
+        const dias = 1 + Math.floor(Math.random() * 14);
+        const hora = 10 + Math.floor(Math.random() * 10);
+
         const d = new Date();
-        d.setDate(d.getDate() + 1);
+        d.setDate(d.getDate() + dias);
         const iso = d.toISOString().slice(0, 10);
+        const hh = String(hora).padStart(2, '0');
+        const hhFim = String(hora + 1).padStart(2, '0');
+
         return {
-            inicio: iso + 'T10:00:00-03:00',
-            fim: iso + 'T11:00:00-03:00'
+            inicio: `${iso}T${hh}:00:00-03:00`,
+            fim: `${iso}T${hhFim}:00:00-03:00`,
+            rotulo: `${d.getDate()}/${d.getMonth() + 1} às ${hh}h`
         };
     }
 
@@ -221,27 +234,41 @@
             const quadra = quadras[0];
             escrever('   usando "' + quadra.nome + '"', 'ok');
 
-            const { inicio, fim } = amanhaAsDez();
             const autorizado = {
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + token
             };
-            const corpo = JSON.stringify({ quadraId: quadra.id, inicio, fim });
 
-            escrever('4. Reservando amanhã, das 10h às 11h...');
-            const primeira = await fetch('/api/reservas', { method: 'POST', headers: autorizado, body: corpo });
-            const dadosPrimeira = await json(primeira);
+            // Tenta até achar um horário livre. Um 409 aqui significa só que o
+            // sorteio caiu num horário que alguém já pegou -- a demonstração
+            // continua, em outro slot.
+            escrever('4. Reservando um horário...');
+            let corpo = null;
+            let dadosPrimeira = null;
 
-            if (primeira.status === 201) {
-                escrever('   HTTP 201 — reserva confirmada, R$ ' + dadosPrimeira.valor, 'ok');
-            } else if (primeira.status === 409) {
-                // Alguém já rodou a demo hoje: o horário está tomado. O resultado
-                // continua sendo o que interessa mostrar.
-                escrever('   HTTP 409 — esse horário já estava reservado', 'ok');
-                escrever('   (outra pessoa rodou a demo antes; a constraint segurou)', 'ok');
+            for (let tentativa = 1; tentativa <= 6; tentativa++) {
+                const slot = slotAleatorio();
+                corpo = JSON.stringify({ quadraId: quadra.id, inicio: slot.inicio, fim: slot.fim });
+
+                const resposta = await fetch('/api/reservas', { method: 'POST', headers: autorizado, body: corpo });
+                dadosPrimeira = await json(resposta);
+
+                if (resposta.status === 201) {
+                    escrever('   HTTP 201 — ' + slot.rotulo + ' confirmado, R$ ' + dadosPrimeira.valor, 'ok');
+                    break;
+                }
+                if (resposta.status === 409) {
+                    escrever('   ' + slot.rotulo + ' já estava ocupado, sorteando outro...');
+                    corpo = null;
+                    continue;
+                }
+
+                escrever('   HTTP ' + resposta.status + ' — ' + (dadosPrimeira?.detail || 'erro'), 'erro');
                 return;
-            } else {
-                escrever('   HTTP ' + primeira.status + ' — ' + (dadosPrimeira?.detail || 'erro'), 'erro');
+            }
+
+            if (!corpo) {
+                escrever('   não encontrei horário livre em 6 tentativas — tente de novo.', 'erro');
                 return;
             }
 
