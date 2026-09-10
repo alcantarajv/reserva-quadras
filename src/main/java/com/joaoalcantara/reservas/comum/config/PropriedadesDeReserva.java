@@ -3,6 +3,7 @@ package com.joaoalcantara.reservas.comum.config;
 import java.time.ZoneId;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -21,6 +22,7 @@ import jakarta.validation.constraints.Positive;
  * validacao de funcionamento conforme o fuso do servidor — exatamente o tipo de
  * bug que so aparece em producao.</p>
  */
+@Validated
 @ConfigurationProperties(prefix = "reservas")
 public record PropriedadesDeReserva(
         @NotNull ZoneId fusoHorario,

@@ -1,6 +1,7 @@
 package com.joaoalcantara.reservas.seguranca;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
@@ -14,6 +15,10 @@ import jakarta.validation.constraints.Size;
  * um segredo fraco — HS256 exige chave de pelo menos 256 bits, e e melhor nao
  * subir do que subir com token forjavel.</p>
  */
+// @Validated e o que faz as constraints abaixo valerem. Sem ele o Spring Boot
+// liga as propriedades e ignora @NotBlank e @Size: elas viram decoracao, e a
+// aplicacao subiria alegremente com um segredo de 5 caracteres.
+@Validated
 @ConfigurationProperties(prefix = "reservas.jwt")
 public record PropriedadesJwt(
         @NotBlank(message = "defina a variavel de ambiente JWT_SECRET")
