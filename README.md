@@ -10,6 +10,7 @@ O problema que este projeto resolve de verdade não é o CRUD de reservas — é
 
 - [O problema central](#o-problema-central)
 - [Controle de concorrência](#controle-de-concorrência)
+- [No ar](#no-ar)
 - [Decisões técnicas](#decisões-técnicas)
 - [Modelo de domínio](#modelo-de-domínio)
 - [Regras de negócio](#regras-de-negócio)
@@ -151,6 +152,38 @@ Desativar impede **novas** reservas. Cancelar em massa as já confirmadas é uma
 
 O schema é responsabilidade exclusiva do Flyway. O Hibernate apenas confere se o mapeamento bate com o que existe — deixá-lo criar tabelas tornaria as migrations decorativas e o schema de produção imprevisível.
 
+### A aplicação recusa subir mal configurada
+
+`PropriedadesJwt` exige um segredo de pelo menos 32 caracteres — HS256 pede 256 bits, e um segredo curto significa token forjável. A checagem roda no boot: sem `JWT_SECRET`, ou com um valor fraco, a aplicação **não sobe**, e o log aponta a propriedade e o motivo. A alternativa — subir e funcionar errado em silêncio — é pior justamente porque não parece um problema.
+
+O detalhe que faz isso funcionar é o `@Validated` na classe de propriedades. Sem ele o Spring Boot liga os valores e **ignora** `@NotBlank` e `@Size`: as anotações viram decoração e a aplicação sobe com um segredo de cinco caracteres. É uma pegadinha silenciosa, porque o código *parece* validado.
+
+### Banco no Neon, aplicação no Render
+
+O plano gratuito de PostgreSQL do Render é apagado 30 dias depois de criado. Num projeto de portfólio isso significa o link ao vivo morrendo todo mês, provavelmente sem aviso, provavelmente na semana em que alguém for olhar. O banco fica então no Neon, cujo plano gratuito é permanente.
+
+Isso exige duas concessões, ambas visíveis no [`render.yaml`](render.yaml): a `DB_URL` precisa terminar em `?sslmode=require`, e o `DB_CONNECTION_TIMEOUT` sobe de 3s para 10s. Os 3 segundos do padrão partem da premissa de um banco sempre acordado — um banco que hiberna quebra essa premissa, e a primeira conexão depois da suspensão precisa esperar ele acordar.
+
+### Infraestrutura em arquivo, não no painel
+
+O [`render.yaml`](render.yaml) descreve o serviço junto do código, pelo mesmo motivo do `compose.yaml`: quem lê o repositório vê o que está no ar, e uma mudança de configuração passa por commit em vez de acontecer num formulário que ninguém mais viu.
+
+Duas escolhas dentro dele valem nota. O `autoDeployTrigger: checksPass` faz o deploy esperar o CI — um push que quebra os testes não chega em produção. E o `JWT_SECRET` usa `generateValue: true`: o Render gera 256 bits aleatórios na criação e nunca os exibe, que é exatamente o que se quer de uma chave de assinatura. Ele fica estável entre deploys; se fosse regenerado, todos os tokens emitidos morreriam a cada subida.
+
+### Uma página inicial estática, sem framework
+
+A raiz devolvia 401 — correto para uma API, ruim para quem abre o link do portfólio sem ler o README, porque 401 lê como site quebrado. É um arquivo HTML servido de `src/main/resources/static`, sem build e sem dependência nova: o que interessa aqui é o backend, e a página só precisa deixá-lo demonstrável sem abrir um terminal.
+
+Ela consome a própria API para provar o ponto do projeto, e trata o caso em que outra pessoa já rodou a demonstração no mesmo horário — aí o primeiro `POST` já devolve 409, o que continua sendo exatamente o que se queria mostrar.
+
+### Grupo de perfis em vez de arquivo duplicado
+
+O perfil `docker` já baixa o nível de log e esconde os detalhes do `/actuator/health`, e isso vale igualmente em produção. Em vez de repetir essas linhas num `application-prod.properties`, o `spring.profiles.group.prod=docker` faz o `prod` herdar o `docker`. No log da subida aparecem os dois: `The following 2 profiles are active: "prod", "docker"`.
+
+### `server.port` respeita a variável `PORT`
+
+Plataformas de deploy injetam a porta por variável de ambiente. Sem `server.port=${PORT:8080}`, o serviço sobe na 8080, a plataforma procura em outra porta, o health check falha e o deploy é revertido — com a aplicação funcionando perfeitamente por dentro.
+
 ### Surefire e Failsafe separados
 
 `mvn test` roda só os unitários — rápidos, sem dependência externa. `mvn verify` roda também os `*IT`, que exigem Docker. O ciclo de desenvolvimento continua rápido sem abrir mão da suite completa no CI.
@@ -218,6 +251,14 @@ Content-Type: application/problem+json
   "ocorridoEm": "2026-09-01T13:00:00Z"
 }
 ```
+
+## No ar
+
+> **Link:** _preencher com a URL do Render depois do deploy_
+
+A raiz traz uma página que executa a demonstração do conflito ao vivo: ela cria uma conta, reserva um horário e tenta reservar **o mesmo horário** de novo, mostrando o 409 vindo da constraint. É o argumento central do projeto rodando no navegador, sem precisar de terminal.
+
+O serviço roda no plano gratuito do Render e hiberna quando ocioso — a primeira requisição depois de um tempo parado pode levar alguns segundos.
 
 ## Como rodar
 
