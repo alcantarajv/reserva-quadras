@@ -16,8 +16,14 @@ services:
     name: reserva-quadras
     runtime: docker
     plan: free
-    # Virginia e a regiao mais proxima do Brasil entre as oferecidas no plano
-    # gratuito.
+    # O banco no Neon esta em us-east-2 (Ohio) e a aplicacao aqui em Virginia.
+    # Regioes vizinhas, ~10-20ms por consulta entre elas -- e o custo se paga uma
+    # vez por CONSULTA, nao por requisicao, entao uma chamada que faz tres
+    # consultas paga tres vezes.
+    #
+    # Irrelevante no volume de um portfolio, e nao vale recriar o servico para
+    # corrigir: a regiao e fixa na criacao tanto no Render quanto no Neon. Num
+    # sistema com trafego real, os dois nasceriam na mesma regiao.
     region: virginia
     dockerfilePath: ./Dockerfile
 
