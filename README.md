@@ -424,7 +424,7 @@ Este é o segundo de uma série, e cada um ataca um problema diferente de backen
 ## Autor
 
 **João Vitor Alcântara Corrêa**
-[GitHub](https://github.com/alcantarajv) · [LinkedIn](https://linkedin.com/in/joaovalcantara)
+[joaoalcantara.dev](https://joaoalcantara.dev) · [GitHub](https://github.com/alcantarajv) · [LinkedIn](https://linkedin.com/in/joaovalcantara)
 
 ---
 
